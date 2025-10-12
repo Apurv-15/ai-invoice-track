@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Shield, User } from "lucide-react";
+import { Loader2, Shield, User, RefreshCw } from "lucide-react";
+import { Tables } from "@/integrations/supabase/types";
 import {
   Table,
   TableBody,
@@ -14,38 +15,48 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-interface UserProfile {
+type UserProfile = {
   id: string;
-  full_name: string;
+  full_name: string | null;
   email: string;
   created_at: string;
-  user_roles: {
-    role: string;
-  }[];
-}
+  updated_at: string;
+  avatar_url: string | null;
+  user_roles: { role: string }[];
+};
 
 export const UsersManagement = () => {
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
-      const { data, error } = await (supabase as any)
+      setLoading(true);
+
+      // Fetch profiles
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select(`
-          *,
-          user_roles (role)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setUsers(data || []);
+      if (profilesError) throw profilesError;
+
+      // Fetch user roles
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('*');
+
+      if (rolesError) throw rolesError;
+
+      // Combine the data
+      const usersWithRoles: UserProfile[] = (profiles || []).map(profile => ({
+        ...profile,
+        user_roles: roles?.filter(role => role.user_id === profile.id) || []
+      }));
+
+      setUsers(usersWithRoles);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -55,15 +66,56 @@ export const UsersManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchUsers();
+
+    // Set up real-time subscriptions for both profiles and user_roles changes
+    const profilesSubscription = supabase
+      .channel('profiles_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+        },
+        () => {
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    const rolesSubscription = supabase
+      .channel('roles_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_roles',
+        },
+        () => {
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      profilesSubscription.unsubscribe();
+      rolesSubscription.unsubscribe();
+    };
+  }, [fetchUsers]);
 
   const toggleAdminRole = async (userId: string, currentRole: string) => {
-    setActionLoading(userId);
+    setActionLoading(prev => ({ ...prev, [userId]: true }));
+
     try {
       const newRole = currentRole === 'admin' ? 'user' : 'admin';
-      
+
       // Delete current role
-      const { error: deleteError } = await (supabase as any)
+      const { error: deleteError } = await supabase
         .from('user_roles')
         .delete()
         .eq('user_id', userId);
@@ -71,18 +123,16 @@ export const UsersManagement = () => {
       if (deleteError) throw deleteError;
 
       // Insert new role
-      const { error: insertError } = await (supabase as any)
+      const { error: insertError } = await supabase
         .from('user_roles')
         .insert({ user_id: userId, role: newRole });
 
       if (insertError) throw insertError;
 
       toast({
-        title: "Role updated",
-        description: `User role changed to ${newRole}`,
+        title: "Success",
+        description: `User role updated to ${newRole}`,
       });
-
-      fetchUsers();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -90,12 +140,12 @@ export const UsersManagement = () => {
         variant: "destructive",
       });
     } finally {
-      setActionLoading(null);
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
     }
   };
 
   const getUserRole = (user: UserProfile) => {
-    return user.user_roles[0]?.role || 'user';
+    return user.user_roles?.[0]?.role || 'user';
   };
 
   if (loading) {
@@ -110,8 +160,17 @@ export const UsersManagement = () => {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>User Management ({users.length})</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchUsers}
+          disabled={loading}
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -128,9 +187,13 @@ export const UsersManagement = () => {
             <TableBody>
               {users.map((user) => {
                 const role = getUserRole(user);
+                const isLoading = actionLoading[user.id] || false;
+
                 return (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.full_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {user.full_name || 'No name'}
+                    </TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       {role === 'admin' ? (
@@ -145,15 +208,17 @@ export const UsersManagement = () => {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {new Date(user.created_at).toLocaleDateString()}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => toggleAdminRole(user.id, role)}
-                        disabled={actionLoading === user.id}
+                        disabled={isLoading}
                       >
-                        {actionLoading === user.id ? (
+                        {isLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : role === 'admin' ? (
                           'Remove Admin'

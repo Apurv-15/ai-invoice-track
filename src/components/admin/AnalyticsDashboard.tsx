@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, TrendingUp, DollarSign, FileText, Users } from "lucide-react";
+import { Loader2, TrendingUp, DollarSign, FileText, Users, RefreshCw } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Button } from "@/components/ui/button";
 
 interface AnalyticsData {
   totalSpending: number;
@@ -19,14 +20,12 @@ export const AnalyticsDashboard = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, []);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
+      setLoading(true);
+
       // Fetch all invoices with categories
-      const { data: invoices, error: invoicesError } = await (supabase as any)
+      const { data: invoices, error: invoicesError } = await supabase
         .from('invoices')
         .select(`
           *,
@@ -37,7 +36,7 @@ export const AnalyticsDashboard = () => {
       if (invoicesError) throw invoicesError;
 
       // Fetch user count
-      const { count: userCount, error: userError } = await (supabase as any)
+      const { count: userCount, error: userError } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
@@ -46,7 +45,7 @@ export const AnalyticsDashboard = () => {
       // Calculate analytics
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
-      
+
       const thisMonthInvoices = invoices.filter(inv => {
         const invDate = new Date(inv.date);
         return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
@@ -54,8 +53,8 @@ export const AnalyticsDashboard = () => {
 
       const totalSpending = thisMonthInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
       const pendingCount = invoices.filter(inv => inv.status === 'pending').length;
-      const avgInvoiceAmount = thisMonthInvoices.length > 0 
-        ? totalSpending / thisMonthInvoices.length 
+      const avgInvoiceAmount = thisMonthInvoices.length > 0
+        ? totalSpending / thisMonthInvoices.length
         : 0;
 
       // Category breakdown
@@ -106,7 +105,63 @@ export const AnalyticsDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchAnalytics();
+
+    // Set up real-time subscriptions for invoice, user, and role changes
+    const invoicesSubscription = supabase
+      .channel('invoices_changes_analytics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+        },
+        () => {
+          fetchAnalytics();
+        }
+      )
+      .subscribe();
+
+    const profilesSubscription = supabase
+      .channel('profiles_changes_analytics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+        },
+        () => {
+          fetchAnalytics();
+        }
+      )
+      .subscribe();
+
+    const rolesSubscription = supabase
+      .channel('roles_changes_analytics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_roles',
+        },
+        () => {
+          fetchAnalytics();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      invoicesSubscription.unsubscribe();
+      profilesSubscription.unsubscribe();
+      rolesSubscription.unsubscribe();
+    };
+  }, [fetchAnalytics]);
 
   if (loading || !data) {
     return (
@@ -120,6 +175,20 @@ export const AnalyticsDashboard = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header with refresh button */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchAnalytics}
+          disabled={loading}
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
