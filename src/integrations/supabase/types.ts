@@ -104,6 +104,13 @@ export type Database = {
             referencedRelation: "invoice_categories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
