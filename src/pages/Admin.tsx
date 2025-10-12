@@ -9,7 +9,7 @@ import { PendingInvoices } from "@/components/admin/PendingInvoices";
 import { AllInvoices } from "@/components/admin/AllInvoices";
 import { UsersManagement } from "@/components/admin/UsersManagement";
 import { CategoriesManagement } from "@/components/admin/CategoriesManagement";
-import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
+import { AdminReminders } from "@/components/admin/AdminReminders";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -48,12 +48,13 @@ export default function Admin() {
 
       <main className="container py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
             <TabsTrigger value="pending">Pending</TabsTrigger>
             <TabsTrigger value="all">All Invoices</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="reminders">Reminders</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending" className="space-y-6">
@@ -72,8 +73,8 @@ export default function Admin() {
             <CategoriesManagement />
           </TabsContent>
 
-          <TabsContent value="analytics" className="space-y-6">
-            <AnalyticsDashboard />
+          <TabsContent value="reminders" className="space-y-6">
+            <AdminReminders />
           </TabsContent>
         </Tabs>
       </main>

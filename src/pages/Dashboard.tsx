@@ -5,7 +5,7 @@ import { Header } from "@/components/Header";
 import { StatsCard } from "@/components/StatsCard";
 import { InvoiceTable } from "@/components/InvoiceTable";
 import { UploadSection } from "@/components/UploadSection";
-import { AutomationPanel } from "@/components/AutomationPanel";
+import { UserReminders } from "@/components/UserReminders";
 import {
   FileText,
   Clock,
@@ -160,7 +160,9 @@ const Dashboard = () => {
           {/* Right Sidebar - Takes 1 column */}
           <div className="space-y-6">
             <UploadSection />
-            <AutomationPanel />
+            {/* Temporarily commenting out AutomationPanel due to import issues */}
+            {/* <AutomationPanel /> */}
+            <UserReminders />
           </div>
         </div>
       </main>
