@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,13 +39,10 @@ export const CategoriesManagement = () => {
   const [newCategory, setNewCategory] = useState({ name: "", color: "#3b82f6", icon: "FileText" });
   const [saveLoading, setSaveLoading] = useState(false);
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
-      const { data, error } = await (supabase as any)
+      setLoading(true);
+      const { data, error } = await supabase
         .from('invoice_categories')
         .select('*')
         .order('name');
@@ -61,7 +58,31 @@ export const CategoriesManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchCategories();
+
+    // Set up real-time subscription for category changes
+    const subscription = supabase
+      .channel('categories_management_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoice_categories',
+        },
+        () => {
+          fetchCategories();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchCategories]);
 
   const handleAddCategory = async () => {
     if (!newCategory.name.trim()) {
@@ -75,7 +96,7 @@ export const CategoriesManagement = () => {
 
     setSaveLoading(true);
     try {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('invoice_categories')
         .insert([newCategory]);
 
@@ -115,10 +136,21 @@ export const CategoriesManagement = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle>Invoice Categories ({categories.length})</CardTitle>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Category
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchCategories}
+              disabled={loading}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Category
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -136,7 +168,7 @@ export const CategoriesManagement = () => {
                   <TableRow key={category.id}>
                     <TableCell className="font-medium">{category.name}</TableCell>
                     <TableCell>
-                      <Badge 
+                      <Badge
                         style={{ backgroundColor: category.color }}
                         className="text-white"
                       >
@@ -145,7 +177,7 @@ export const CategoriesManagement = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div 
+                        <div
                           className="w-6 h-6 rounded border"
                           style={{ backgroundColor: category.color }}
                         />
@@ -207,7 +239,7 @@ export const CategoriesManagement = () => {
             </div>
             <div className="p-4 border rounded bg-muted">
               <p className="text-sm text-muted-foreground mb-2">Preview:</p>
-              <Badge 
+              <Badge
                 style={{ backgroundColor: newCategory.color }}
                 className="text-white"
               >

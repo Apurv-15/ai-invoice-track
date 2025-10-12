@@ -19,6 +19,7 @@ export const AnalyticsDashboard = () => {
   const { toast } = useToast();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [invoiceCount, setInvoiceCount] = useState(0);
 
   const fetchAnalytics = useCallback(async () => {
     try {
@@ -42,28 +43,71 @@ export const AnalyticsDashboard = () => {
 
       if (userError) throw userError;
 
-      // Calculate analytics
+      console.log('Analytics Debug:', {
+        totalInvoices: invoices?.length || 0,
+        firstInvoice: invoices?.[0],
+        userCount: userCount || 0
+      });
+
+      // Calculate analytics - be more flexible with date filtering
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
 
-      const thisMonthInvoices = invoices.filter(inv => {
+      // Filter for current month first
+      let thisMonthInvoices = invoices?.filter(inv => {
+        if (!inv.date) return false;
         const invDate = new Date(inv.date);
         return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
-      });
+      }) || [];
 
-      const totalSpending = thisMonthInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
-      const pendingCount = invoices.filter(inv => inv.status === 'pending').length;
+      // If no invoices this month, show last 30 days or all invoices
+      if (thisMonthInvoices.length === 0 && invoices && invoices.length > 0) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        thisMonthInvoices = invoices.filter(inv => {
+          if (!inv.date) return false;
+          const invDate = new Date(inv.date);
+          return invDate >= thirtyDaysAgo;
+        });
+
+        console.log('No current month invoices, using last 30 days:', thisMonthInvoices.length);
+      }
+
+      // If still no invoices, use all invoices
+      if (thisMonthInvoices.length === 0 && invoices) {
+        thisMonthInvoices = invoices;
+        console.log('Using all invoices for analytics');
+      }
+
+      console.log('Filtered invoices for calculation:', thisMonthInvoices.length);
+
+      // Calculate totals with better error handling
+      const totalSpending = thisMonthInvoices.reduce((sum, inv) => {
+        const amount = Number(inv.amount) || 0;
+        console.log('Invoice amount:', inv.amount, 'parsed:', amount);
+        return sum + amount;
+      }, 0);
+
+      const pendingCount = invoices?.filter(inv => inv.status === 'pending').length || 0;
       const avgInvoiceAmount = thisMonthInvoices.length > 0
         ? totalSpending / thisMonthInvoices.length
         : 0;
 
+      console.log('Calculated totals:', {
+        totalSpending,
+        pendingCount,
+        avgInvoiceAmount,
+        invoiceCount: thisMonthInvoices.length
+      });
+
       // Category breakdown
       const categoryMap = new Map<string, { value: number; color: string }>();
       thisMonthInvoices.forEach(inv => {
-        if (inv.invoice_categories) {
+        if (inv.invoice_categories && inv.invoice_categories.name) {
           const existing = categoryMap.get(inv.invoice_categories.name) || { value: 0, color: inv.invoice_categories.color };
           categoryMap.set(inv.invoice_categories.name, {
-            value: existing.value + Number(inv.amount),
+            value: existing.value + (Number(inv.amount) || 0),
             color: inv.invoice_categories.color,
           });
         }
@@ -80,13 +124,22 @@ export const AnalyticsDashboard = () => {
       thisMonthInvoices.forEach(inv => {
         const userName = inv.profiles?.full_name || 'Unknown';
         const existing = userMap.get(userName) || 0;
-        userMap.set(userName, existing + Number(inv.amount));
+        userMap.set(userName, existing + (Number(inv.amount) || 0));
       });
 
       const userSpending = Array.from(userMap.entries())
         .map(([name, amount]) => ({ name, amount }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 10);
+
+      console.log('Final analytics data:', {
+        totalSpending,
+        pendingCount,
+        avgInvoiceAmount,
+        totalUsers: userCount || 0,
+        categoryBreakdown,
+        userSpending
+      });
 
       setData({
         totalSpending,
@@ -97,6 +150,7 @@ export const AnalyticsDashboard = () => {
         userSpending,
       });
     } catch (error: any) {
+      console.error('Analytics fetch error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -110,7 +164,7 @@ export const AnalyticsDashboard = () => {
   useEffect(() => {
     fetchAnalytics();
 
-    // Set up real-time subscriptions for invoice, user, and role changes
+    // Set up real-time subscriptions for invoice, user, role, and category changes
     const invoicesSubscription = supabase
       .channel('invoices_changes_analytics')
       .on(
@@ -156,10 +210,26 @@ export const AnalyticsDashboard = () => {
       )
       .subscribe();
 
+    const categoriesSubscription = supabase
+      .channel('categories_changes_analytics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoice_categories',
+        },
+        () => {
+          fetchAnalytics();
+        }
+      )
+      .subscribe();
+
     return () => {
       invoicesSubscription.unsubscribe();
       profilesSubscription.unsubscribe();
       rolesSubscription.unsubscribe();
+      categoriesSubscription.unsubscribe();
     };
   }, [fetchAnalytics]);
 
@@ -197,7 +267,12 @@ export const AnalyticsDashboard = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{data.totalSpending.toLocaleString()}</div>
+            <div className="text-2xl font-bold">
+              {data.totalSpending > 0 ? `₹${data.totalSpending.toLocaleString()}` : '₹0'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {thisMonthInvoices.length > 0 ? `${thisMonthInvoices.length} invoices` : 'No invoices found'}
+            </p>
           </CardContent>
         </Card>
 
