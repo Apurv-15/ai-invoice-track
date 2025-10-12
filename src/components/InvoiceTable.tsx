@@ -39,6 +39,7 @@ interface InvoiceTableProps {
     recipient_email?: string;
     description?: string;
   }>;
+  isAdmin?: boolean;
 }
 
 interface DialogState {
@@ -72,7 +73,7 @@ const statusConfig: Record<
   },
 };
 
-export const InvoiceTable = ({ invoices: initialInvoices }: InvoiceTableProps) => {
+export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: InvoiceTableProps) => {
   const { toast } = useToast();
   const [dialogState, setDialogState] = useState<DialogState>({
     type: null,
@@ -196,41 +197,53 @@ export const InvoiceTable = ({ invoices: initialInvoices }: InvoiceTableProps) =
                     </span>
                   </td>
                   <td className="p-4">
-                    <Select
-                      value={invoice.status}
-                      onValueChange={(value: InvoiceStatus) =>
-                        handleStatusChange(invoice.id, value)
-                      }
-                    >
-                      <SelectTrigger className="w-[130px] border-0 bg-transparent">
-                        <SelectValue>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "rounded-full px-3 py-1 text-xs font-semibold border smooth-transition",
-                              statusConfig[invoice.status].className
-                            )}
-                          >
-                            {statusConfig[invoice.status].label}
-                          </Badge>
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(statusConfig).map(([status, config]) => (
-                          <SelectItem key={status} value={status}>
+                    {isAdmin ? (
+                      <Select
+                        value={invoice.status}
+                        onValueChange={(value: InvoiceStatus) =>
+                          handleStatusChange(invoice.id, value)
+                        }
+                      >
+                        <SelectTrigger className="w-[130px] border-0 bg-transparent">
+                          <SelectValue>
                             <Badge
                               variant="outline"
                               className={cn(
-                                "rounded-full px-3 py-1 text-xs font-semibold border",
-                                config.className
+                                "rounded-full px-3 py-1 text-xs font-semibold border smooth-transition",
+                                statusConfig[invoice.status].className
                               )}
                             >
-                              {config.label}
+                              {statusConfig[invoice.status].label}
                             </Badge>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(statusConfig).map(([status, config]) => (
+                            <SelectItem key={status} value={status}>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "rounded-full px-3 py-1 text-xs font-semibold border",
+                                  config.className
+                                )}
+                              >
+                                {config.label}
+                              </Badge>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-semibold border",
+                          statusConfig[invoice.status].className
+                        )}
+                      >
+                        {statusConfig[invoice.status].label}
+                      </Badge>
+                    )}
                   </td>
                   <td className="p-4">
                     <span className="font-semibold">

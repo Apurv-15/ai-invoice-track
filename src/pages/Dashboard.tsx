@@ -154,7 +154,7 @@ const Dashboard = () => {
                 AI-powered invoice detection and categorization
               </p>
             </div>
-            <InvoiceTable invoices={invoices} />
+            <InvoiceTable invoices={invoices} isAdmin={false} />
           </div>
 
           {/* Right Sidebar - Takes 1 column */}

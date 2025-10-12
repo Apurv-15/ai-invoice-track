@@ -37,7 +37,7 @@ export default function Landing() {
         {/* Header */}
         <header className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
@@ -45,13 +45,23 @@ export default function Landing() {
                 InvoSmart AI
               </span>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={handleGetStarted}
-              className="glass hover:bg-primary/10"
-            >
-              Sign In
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={handleGetStarted}
+                className="glass hover:bg-primary/10"
+              >
+                Sign In
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate("/auth?type=admin")}
+                className="glass hover:bg-primary/10 border-primary/30"
+              >
+                <Shield className="mr-2 h-4 w-4" />
+                Admin Login
+              </Button>
+            </div>
           </div>
         </header>
 

@@ -16,6 +16,9 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  
+  // Check if this is admin login mode
+  const isAdminMode = new URLSearchParams(window.location.search).get('type') === 'admin';
 
   useEffect(() => {
     // Check if user is already logged in
@@ -109,9 +112,11 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-primary/5">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Invoice Management System</CardTitle>
+          <CardTitle className="text-2xl text-center">
+            {isAdminMode ? "Admin Portal" : "Invoice Management System"}
+          </CardTitle>
           <CardDescription className="text-center">
-            Sign in to manage your invoices
+            {isAdminMode ? "Administrator access only" : "Sign in to manage your invoices"}
           </CardDescription>
         </CardHeader>
         <CardContent>
