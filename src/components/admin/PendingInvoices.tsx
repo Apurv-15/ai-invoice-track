@@ -80,11 +80,11 @@ export const PendingInvoices = () => {
 
   const fetchPendingInvoices = async () => {
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('invoices')
         .select(`
           *,
-          profiles!invoices_user_id_fkey (full_name, email),
+          profiles (full_name, email),
           invoice_categories (name, color)
         `)
         .eq('status', 'pending')
