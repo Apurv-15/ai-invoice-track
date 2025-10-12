@@ -33,7 +33,38 @@ Vendor: ${vendor}
 Description: ${description || 'N/A'}
 Amount: ₹${amount}
 
-Return ONLY the category name and a confidence score (0-1).`;
+CATEGORY DETECTION RULES - Use this priority order:
+
+1. VENDOR NAME MATCHING (Primary):
+   - Airlines: Delta, United, American, JetBlue, Southwest → Travel
+   - Hotels: Marriott, Hilton, Hyatt, Airbnb, Booking.com → Travel
+   - Ride services: Uber, Lyft, Ola → Travel
+   - Cloud/Tech: AWS, Azure, Google Cloud, Microsoft, Adobe, Salesforce, Slack, Zoom → Software
+   - Office stores: Staples, Office Depot, Amazon Business → Office Supplies
+   - Telecom: Verizon, AT&T, T-Mobile, Jio, Airtel → Utilities
+   - Marketing: Google Ads, Facebook Ads, LinkedIn Ads → Marketing
+   - Food delivery: Zomato, Swiggy, Uber Eats → Meals & Entertainment
+
+2. PRODUCT/KEYWORD MATCHING (Secondary):
+   - "flight", "hotel", "booking", "travel" → Travel
+   - "office", "chair", "desk", "stationery", "pen", "paper" → Office Supplies
+   - "software", "license", "subscription", "saas", "cloud" → Software
+   - "electricity", "internet", "phone", "utility", "broadband" → Utilities
+   - "advertising", "campaign", "promotion", "marketing" → Marketing
+   - "food", "restaurant", "catering", "meal", "dinner" → Meals & Entertainment
+   - "consulting", "legal", "accounting", "audit", "tax" → Professional Services
+
+3. AMOUNT-BASED HEURISTICS:
+   - Very high amounts (>₹50,000) with unclear vendor → Professional Services
+   - Moderate amounts (₹1,000-₹10,000) with unclear details → Other
+   - Small amounts (<₹1,000) → Office Supplies or Meals & Entertainment
+
+CONFIDENCE SCORING:
+- 0.9-1.0: Clear vendor or product match
+- 0.7-0.8: Strong indicators in 2+ categories
+- 0.5-0.6: Some indicators but not definitive
+- 0.2-0.4: Limited information, educated guess
+- 0.0-0.1: No clear indicators`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',

@@ -27,12 +27,42 @@ serve(async (req) => {
 - Description (brief summary of items/services purchased)
 - Category (categorize into ONE of these: Travel, Office Supplies, Software, Utilities, Marketing, Meals & Entertainment, Professional Services, Other)
 
-For categorization, look at:
-1. The vendor name (e.g., "Delta Airlines" = Travel, "AWS" = Software)
-2. Line items and what was purchased
-3. Any logos or branding that indicate the business type
+CATEGORY DETECTION RULES - Analyze in this order of priority:
 
-Return high confidence (0.8-1.0) only when you're certain. Use lower confidence for unclear invoices.`;
+1. VENDOR NAME ANALYSIS (Highest Priority):
+   - Airlines (Delta, United, American, JetBlue, Southwest) → Travel
+   - Hotels (Marriott, Hilton, Hyatt, Airbnb) → Travel
+   - Ride-sharing (Uber, Lyft) → Travel
+   - Cloud services (AWS, Azure, Google Cloud) → Software
+   - Software companies (Microsoft, Adobe, Salesforce, Slack) → Software
+   - Office supply stores (Staples, Office Depot) → Office Supplies
+   - Telecom (Verizon, AT&T, T-Mobile) → Utilities
+   - Electric/Gas companies → Utilities
+   - Marketing agencies/companies → Marketing
+   - Restaurants/Food delivery → Meals & Entertainment
+   - Consulting firms, Law firms, Accounting → Professional Services
+
+2. PRODUCT/SERVICE ANALYSIS (If vendor unclear):
+   - Flight tickets, hotel bookings → Travel
+   - Office furniture, stationery, pens, paper → Office Supplies
+   - Software licenses, subscriptions, SaaS → Software
+   - Internet, phone, electricity, water bills → Utilities
+   - Advertising, campaigns, promotions → Marketing
+   - Food, catering, events → Meals & Entertainment
+   - Consulting, legal, accounting services → Professional Services
+   - Everything else → Other
+
+3. VISUAL CUES:
+   - Airline logos, hotel branding → Travel
+   - Tech company logos (Microsoft, Apple, etc.) → Software
+   - Restaurant logos, food imagery → Meals & Entertainment
+
+CONFIDENCE SCORING:
+- 0.9-1.0: Very clear vendor match or obvious product type
+- 0.7-0.8: Good vendor indicators or clear product categories
+- 0.5-0.6: Some indicators but not definitive
+- 0.2-0.4: Limited information, best guess
+- 0.0-0.1: Cannot determine category`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',

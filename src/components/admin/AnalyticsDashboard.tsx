@@ -149,6 +149,8 @@ export const AnalyticsDashboard = () => {
         categoryBreakdown,
         userSpending,
       });
+
+      setInvoiceCount(thisMonthInvoices.length);
     } catch (error: any) {
       console.error('Analytics fetch error:', error);
       toast({
@@ -271,7 +273,7 @@ export const AnalyticsDashboard = () => {
               {data.totalSpending > 0 ? `₹${data.totalSpending.toLocaleString()}` : '₹0'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {thisMonthInvoices.length > 0 ? `${thisMonthInvoices.length} invoices` : 'No invoices found'}
+              {invoiceCount > 0 ? `${invoiceCount} invoices` : 'No invoices found'}
             </p>
           </CardContent>
         </Card>
