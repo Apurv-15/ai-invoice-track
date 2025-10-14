@@ -28,10 +28,16 @@ interface Reminder {
   updated_at: string;
   read_at?: string;
   resolved_at?: string;
+  invoice_id?: string;
   profiles?: {
     full_name: string;
     email: string;
   };
+  invoices?: {
+    invoice_number: string;
+    vendor: string;
+    amount: number;
+  } | null;
 }
 
 export const AdminReminders = () => {
@@ -45,16 +51,17 @@ export const AdminReminders = () => {
   const fetchReminders = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('reminders')
         .select(`
           *,
-          profiles!reminders_user_id_fkey (full_name, email)
+          profiles!reminders_user_id_fkey (full_name, email),
+          invoices (invoice_number, vendor, amount)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setReminders(data || []);
+      setReminders((data || []) as Reminder[]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -261,6 +268,11 @@ export const AdminReminders = () => {
                         <p className="text-sm text-muted-foreground">
                           From: {reminder.profiles?.full_name} ({reminder.profiles?.email})
                         </p>
+                        {reminder.invoices && (
+                          <p className="text-sm font-medium text-primary">
+                            Invoice: {reminder.invoices.invoice_number} - {reminder.invoices.vendor} (${reminder.invoices.amount})
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -328,6 +340,11 @@ export const AdminReminders = () => {
                         <p className="text-sm text-muted-foreground">
                           From: {reminder.profiles?.full_name}
                         </p>
+                        {reminder.invoices && (
+                          <p className="text-sm font-medium text-primary">
+                            Invoice: {reminder.invoices.invoice_number}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -367,6 +384,11 @@ export const AdminReminders = () => {
                         <p className="text-sm text-muted-foreground">
                           From: {reminder.profiles?.full_name}
                         </p>
+                        {reminder.invoices && (
+                          <p className="text-sm font-medium text-primary">
+                            Invoice: {reminder.invoices.invoice_number}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <Badge variant="outline" className="text-green-600">Resolved</Badge>

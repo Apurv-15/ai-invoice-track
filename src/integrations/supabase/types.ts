@@ -148,6 +148,7 @@ export type Database = {
           created_at: string
           external_notification_sent: boolean | null
           id: string
+          invoice_id: string | null
           message: string
           priority: string
           read_at: string | null
@@ -164,6 +165,7 @@ export type Database = {
           created_at?: string
           external_notification_sent?: boolean | null
           id?: string
+          invoice_id?: string | null
           message: string
           priority?: string
           read_at?: string | null
@@ -180,6 +182,7 @@ export type Database = {
           created_at?: string
           external_notification_sent?: boolean | null
           id?: string
+          invoice_id?: string | null
           message?: string
           priority?: string
           read_at?: string | null
@@ -190,6 +193,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "reminders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reminders_user_id_fkey"
             columns: ["user_id"]

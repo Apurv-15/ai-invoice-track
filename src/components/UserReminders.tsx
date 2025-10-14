@@ -14,6 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+interface Invoice {
+  id: string;
+  invoice_number: string;
+  vendor: string;
+  amount: number;
+}
 import {
   Dialog,
   DialogContent,
@@ -39,6 +46,7 @@ interface UserReminder {
 export const UserReminders = () => {
   const { toast } = useToast();
   const [reminders, setReminders] = useState<UserReminder[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -48,6 +56,7 @@ export const UserReminders = () => {
   const [message, setMessage] = useState("");
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [category, setCategory] = useState<'general' | 'invoice' | 'payment' | 'technical' | 'urgent'>('general');
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -74,8 +83,27 @@ export const UserReminders = () => {
     }
   }, [toast]);
 
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, vendor, amount')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setInvoices(data || []);
+    } catch (error: any) {
+      console.error('Error fetching invoices:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchReminders();
+    fetchInvoices();
 
     // Set up real-time subscription for user's reminders
     const subscription = (supabase as any)
@@ -99,7 +127,7 @@ export const UserReminders = () => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [fetchReminders]);
+  }, [fetchReminders, fetchInvoices]);
 
   const sendReminder = async () => {
     if (!title.trim() || !message.trim()) {
@@ -116,15 +144,21 @@ export const UserReminders = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      const { error } = await (supabase as any)
+      const insertData: any = {
+        user_id: user.id,
+        title: title.trim(),
+        message: message.trim(),
+        priority,
+        category,
+      };
+
+      if (selectedInvoiceId) {
+        insertData.invoice_id = selectedInvoiceId;
+      }
+
+      const { error } = await supabase
         .from('reminders')
-        .insert({
-          user_id: user.id,
-          title: title.trim(),
-          message: message.trim(),
-          priority,
-          category,
-        });
+        .insert(insertData);
 
       if (error) throw error;
 
@@ -138,6 +172,7 @@ export const UserReminders = () => {
       setMessage("");
       setPriority('medium');
       setCategory('general');
+      setSelectedInvoiceId("");
       setDialogOpen(false);
 
       fetchReminders();
@@ -232,6 +267,23 @@ export const UserReminders = () => {
                       <SelectItem value="payment">Payment Issue</SelectItem>
                       <SelectItem value="technical">Technical Support</SelectItem>
                       <SelectItem value="urgent">Urgent Matter</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="invoice">Related Invoice (Optional)</Label>
+                  <Select value={selectedInvoiceId} onValueChange={setSelectedInvoiceId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an invoice" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {invoices.map((invoice) => (
+                        <SelectItem key={invoice.id} value={invoice.id}>
+                          {invoice.invoice_number} - {invoice.vendor} (${invoice.amount})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
