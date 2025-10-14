@@ -140,6 +140,65 @@ export type Database = {
         }
         Relationships: []
       }
+      reminders: {
+        Row: {
+          admin_notes: string | null
+          api_key_used: string | null
+          category: string
+          created_at: string
+          external_notification_sent: boolean | null
+          id: string
+          message: string
+          priority: string
+          read_at: string | null
+          resolved_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          api_key_used?: string | null
+          category?: string
+          created_at?: string
+          external_notification_sent?: boolean | null
+          id?: string
+          message: string
+          priority?: string
+          read_at?: string | null
+          resolved_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          api_key_used?: string | null
+          category?: string
+          created_at?: string
+          external_notification_sent?: boolean | null
+          id?: string
+          message?: string
+          priority?: string
+          read_at?: string | null
+          resolved_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
