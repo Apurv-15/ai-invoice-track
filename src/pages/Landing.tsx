@@ -18,9 +18,9 @@ export default function Landing() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden bg-background">
       {/* Liquid Ether Background */}
-      <div className="absolute inset-0 z-0">
+      <div className="absolute inset-0 z-0" style={{ opacity: 1 }}>
         <LiquidEther
           colors={['#5B9AFE', '#A78BFA', '#EC4899']}
           mouseForce={25}
@@ -28,7 +28,7 @@ export default function Landing() {
           autoDemo={true}
           autoSpeed={0.4}
           autoIntensity={2.5}
-          className="w-full h-full"
+          className="w-full h-full opacity-100"
         />
       </div>
 
