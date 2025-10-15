@@ -1,14 +1,21 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Shield, ArrowRight } from "lucide-react";
 import LiquidEther from "@/components/LiquidEther";
+import Loader from "@/components/Loader";
 
 export default function Landing() {
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const handleGetStarted = () => {
     navigate("/dashboard");
   };
+
+  if (loading) {
+    return <Loader onLoadComplete={() => setLoading(false)} />;
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden">
