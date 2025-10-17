@@ -116,10 +116,8 @@ export const UserReminders = () => {
           table: 'reminders',
         },
         (payload) => {
-          // Only refresh if the change affects this user's reminders
-          if (payload.new?.user_id === supabase.auth.getUser().then(({ data }) => data.user?.id)) {
-            fetchReminders();
-          }
+          // Refresh on any change; RLS ensures only the user's reminders are fetched
+          fetchReminders();
         }
       )
       .subscribe();

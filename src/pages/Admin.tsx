@@ -10,6 +10,7 @@ import { AllInvoices } from "@/components/admin/AllInvoices";
 import { UsersManagement } from "@/components/admin/UsersManagement";
 import { CategoriesManagement } from "@/components/admin/CategoriesManagement";
 import { AdminReminders } from "@/components/admin/AdminReminders";
+import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -71,6 +72,10 @@ export default function Admin() {
 
           <TabsContent value="categories" className="space-y-6">
             <CategoriesManagement />
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            <AnalyticsDashboard />
           </TabsContent>
 
           <TabsContent value="reminders" className="space-y-6">

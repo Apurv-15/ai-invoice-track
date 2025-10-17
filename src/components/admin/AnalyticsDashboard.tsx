@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, TrendingUp, DollarSign, FileText, Users, RefreshCw } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 import { Button } from "@/components/ui/button";
 
 interface AnalyticsData {
@@ -13,6 +13,7 @@ interface AnalyticsData {
   totalUsers: number;
   categoryBreakdown: { name: string; value: number; color: string }[];
   userSpending: { name: string; amount: number }[];
+  spendingOverTime: { date: string; amount: number }[];
 }
 
 export const AnalyticsDashboard = () => {
@@ -132,13 +133,34 @@ export const AnalyticsDashboard = () => {
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 10);
 
+      // Build spending over time (last 12 months)
+      const monthlyMap = new Map<string, number>();
+      (invoices || []).forEach((inv: any) => {
+        if (!inv.date) return;
+        const d = new Date(inv.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthlyMap.set(key, (monthlyMap.get(key) || 0) + (Number(inv.amount) || 0));
+      });
+
+      const now = new Date();
+      const spendingOverTime = Array.from({ length: 12 }, (_, idx) => {
+        const dt = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        const label = `${dt.toLocaleString(undefined, { month: 'short' })} ${String(dt.getFullYear()).slice(2)}`;
+        return {
+          date: label,
+          amount: monthlyMap.get(key) || 0,
+        };
+      });
+
       console.log('Final analytics data:', {
         totalSpending,
         pendingCount,
         avgInvoiceAmount,
         totalUsers: userCount || 0,
         categoryBreakdown,
-        userSpending
+        userSpending,
+        spendingOverTime,
       });
 
       setData({
@@ -148,6 +170,7 @@ export const AnalyticsDashboard = () => {
         totalUsers: userCount || 0,
         categoryBreakdown,
         userSpending,
+        spendingOverTime,
       });
 
       setInvoiceCount(thisMonthInvoices.length);
@@ -328,6 +351,10 @@ export const AnalyticsDashboard = () => {
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
+                    isAnimationActive={true}
+                    animationBegin={0}
+                    animationDuration={1000}
+                    animationEasing="ease-out"
                   >
                     {data.categoryBreakdown.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
