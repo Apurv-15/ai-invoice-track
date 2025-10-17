@@ -271,12 +271,11 @@ export const UserReminders = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="invoice">Related Invoice (Optional)</Label>
-                  <Select value={selectedInvoiceId} onValueChange={setSelectedInvoiceId}>
+                  <Select value={selectedInvoiceId || undefined} onValueChange={setSelectedInvoiceId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select an invoice" />
+                      <SelectValue placeholder="Select an invoice (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
                       {invoices.map((invoice) => (
                         <SelectItem key={invoice.id} value={invoice.id}>
                           {invoice.invoice_number} - {invoice.vendor} (${invoice.amount})
