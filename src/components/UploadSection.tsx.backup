@@ -19,8 +19,6 @@ export const UploadSection = () => {
   const [attemptedInvoiceNumber, setAttemptedInvoiceNumber] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-
-  const fileToBase64 = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -36,7 +34,7 @@ export const UploadSection = () => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
-
+    
     const viewport = page.getViewport({ scale: 2.0 });
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d')!;
@@ -52,21 +50,10 @@ export const UploadSection = () => {
     return canvas.toDataURL('image/png').split(',')[1];
   };
 
-  const handleViewExistingInvoice = (invoiceId: string) => {
-    // Navigate to the invoice details or scroll to it in the table
-    // For now, we'll just close the dialog and show a message
-    toast({
-      title: "View Invoice",
-      description: "Navigate to the invoice details to view the existing invoice.",
-    });
-  };
-
   const processFile = async (file: File) => {
     setIsUploading(true);
     setUploadProgress(0);
     setDetectionLogs([]);
-
-    let extractedData: any = null; // Declare outside try block for access in catch
 
     try {
       // Validate file
@@ -97,16 +84,14 @@ export const UploadSection = () => {
       setDetectionLogs(prev => [...prev, "Extracting invoice data with AI vision..."]);
 
       // Call AI extraction edge function
-      const { data: extractedDataResult, error: extractError } = await supabase.functions.invoke('extract-invoice-data', {
+      const { data: extractedData, error: extractError } = await supabase.functions.invoke('extract-invoice-data', {
         body: { imageBase64 }
       });
 
       if (extractError) throw new Error(extractError.message || "Failed to extract invoice data");
-      if (!extractedDataResult || extractedDataResult.error) {
-        throw new Error(extractedDataResult?.error || "Failed to extract invoice data");
+      if (!extractedData || extractedData.error) {
+        throw new Error(extractedData?.error || "Failed to extract invoice data");
       }
-
-      extractedData = extractedDataResult; // Store for use in catch block
 
       setUploadProgress(60);
       setDetectionLogs(prev => [...prev, `✓ Vendor: ${extractedData.vendor}`]);
@@ -129,32 +114,21 @@ export const UploadSection = () => {
       setDetectionLogs(prev => [...prev, "Checking for duplicate invoice numbers..."]);
 
       // Check for duplicate invoice number for this user
-      console.log("🔍 Checking for duplicate invoice:", extractedData.invoice_number);
-      const { data: existingInvoiceData, error: checkError } = await (supabase as any)
+      const { data: existingInvoice, error: checkError } = await (supabase as any)
         .from('invoices')
-        .select('*')
+        .select('id, invoice_number')
         .eq('user_id', user.id)
         .eq('invoice_number', extractedData.invoice_number)
         .single();
-
-      console.log("📊 Duplicate check result:", { existingInvoiceData, checkError });
 
       if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
         throw checkError;
       }
 
-      if (existingInvoiceData) {
-        console.log("🚨 Duplicate invoice found:", existingInvoiceData);
-        // Show duplicate dialog instead of throwing error
-        setExistingInvoice(existingInvoiceData);
-        setAttemptedInvoiceNumber(extractedData.invoice_number);
-        setDuplicateDialogOpen(true);
-        setIsUploading(false);
-        setDetectionLogs([]);
-        return;
+      if (existingInvoice) {
+        throw new Error(`Invoice with number "${extractedData.invoice_number}" already exists in your account. Please check your uploaded invoices.`);
       }
 
-      console.log("✅ No duplicate found, proceeding with save...");
       setDetectionLogs(prev => [...prev, "✅ No duplicate invoice found - proceeding with save..."]);
       setDetectionLogs(prev => [...prev, "Saving invoice to database..."]);
 
@@ -201,37 +175,9 @@ export const UploadSection = () => {
 
       // Handle specific database constraint violations
       if (error instanceof Error) {
-        console.log("❌ Error message:", error.message);
         if (error.message.includes('unique_user_invoice_number') ||
             error.message.includes('duplicate key value') ||
-            error.message.includes('violates unique constraint') ||
-            error.message.includes('already exists')) {
-          console.log("🚨 Database constraint violation detected");
-          // If constraint violation, try to find the existing invoice and show dialog
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user && extractedData) {
-              const { data: existingInvoiceData } = await (supabase as any)
-                .from('invoices')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('invoice_number', extractedData.invoice_number)
-                .single();
-
-              if (existingInvoiceData) {
-                console.log("📋 Found existing invoice for dialog:", existingInvoiceData);
-                setExistingInvoice(existingInvoiceData);
-                setAttemptedInvoiceNumber(extractedData.invoice_number);
-                setDuplicateDialogOpen(true);
-                setIsUploading(false);
-                setDetectionLogs([]);
-                return;
-              }
-            }
-          } catch (findError) {
-            console.error("Error finding existing invoice:", findError);
-          }
-
+            error.message.includes('violates unique constraint')) {
           toast({
             title: "❌ Duplicate Invoice",
             description: "An invoice with this number already exists in your account. Please check your uploaded invoices.",
@@ -277,93 +223,83 @@ export const UploadSection = () => {
   };
 
   return (
-    <>
-      <div className="glass-card rounded-2xl p-6 animate-scale-in">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
-            <Upload className="w-5 h-5 text-white" />
-          </div>
-          <h3 className="text-lg font-semibold">Upload Invoices</h3>
+    <div className="glass-card rounded-2xl p-6 animate-scale-in">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
+          <Upload className="w-5 h-5 text-white" />
         </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/jpg,application/pdf"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-
-        <div
-          className="border-2 border-dashed border-border rounded-2xl p-8 text-center hover:border-primary smooth-transition cursor-pointer group"
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onClick={() => !isUploading && fileInputRef.current?.click()}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:scale-110 smooth-transition">
-              {isUploading ? (
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              ) : (
-                <FileText className="w-8 h-8 text-primary" />
-              )}
-            </div>
-            <div>
-              <p className="font-medium mb-1">
-                Drop files here or click to upload
-              </p>
-              <p className="text-sm text-muted-foreground">
-                PDF, JPG, PNG up to 10MB
-              </p>
-            </div>
-            <Button
-              disabled={isUploading}
-              className="rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 smooth-transition shadow-lg"
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-            >
-              {isUploading ? "Processing..." : "Select Files"}
-            </Button>
-          </div>
-        </div>
-
-        {isUploading && (
-          <div className="mt-4 space-y-2 animate-fade-in">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Processing...</span>
-              <span className="font-semibold">{uploadProgress}%</span>
-            </div>
-            <Progress value={uploadProgress} className="h-2" />
-          </div>
-        )}
-
-        {(isUploading || detectionLogs.length > 0) && (
-          <div className="mt-6 space-y-3">
-            <h4 className="text-sm font-semibold mb-3">AI Detection Log</h4>
-            <div className="space-y-2">
-              {detectionLogs.map((log, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-2 text-sm text-muted-foreground animate-fade-in"
-                >
-                  <CheckCircle2 className="w-4 h-4 text-success" />
-                  {log}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <h3 className="text-lg font-semibold">Upload Invoices</h3>
       </div>
 
-      <DuplicateInvoiceDialog
-        open={duplicateDialogOpen}
-        onOpenChange={setDuplicateDialogOpen}
-        existingInvoice={existingInvoice}
-        attemptedInvoiceNumber={attemptedInvoiceNumber}
-        onViewExisting={handleViewExistingInvoice}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,application/pdf"
+        onChange={handleFileSelect}
+        className="hidden"
       />
-    </>
+      
+      <div 
+        className="border-2 border-dashed border-border rounded-2xl p-8 text-center hover:border-primary smooth-transition cursor-pointer group"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onClick={() => !isUploading && fileInputRef.current?.click()}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:scale-110 smooth-transition">
+            {isUploading ? (
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            ) : (
+              <FileText className="w-8 h-8 text-primary" />
+            )}
+          </div>
+          <div>
+            <p className="font-medium mb-1">
+              Drop files here or click to upload
+            </p>
+            <p className="text-sm text-muted-foreground">
+              PDF, JPG, PNG up to 10MB
+            </p>
+          </div>
+          <Button
+            disabled={isUploading}
+            className="rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 smooth-transition shadow-lg"
+            onClick={(e) => {
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }}
+          >
+            {isUploading ? "Processing..." : "Select Files"}
+          </Button>
+        </div>
+      </div>
+
+      {isUploading && (
+        <div className="mt-4 space-y-2 animate-fade-in">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Processing...</span>
+            <span className="font-semibold">{uploadProgress}%</span>
+          </div>
+          <Progress value={uploadProgress} className="h-2" />
+        </div>
+      )}
+
+      {(isUploading || detectionLogs.length > 0) && (
+        <div className="mt-6 space-y-3">
+          <h4 className="text-sm font-semibold mb-3">AI Detection Log</h4>
+          <div className="space-y-2">
+            {detectionLogs.map((log, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-2 text-sm text-muted-foreground animate-fade-in"
+              >
+                <CheckCircle2 className="w-4 h-4 text-success" />
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

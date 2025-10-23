@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DuplicateInvoiceDialog } from "./DuplicateInvoiceDialog";
 import { cn } from "@/lib/utils";
 import { InvoiceDetailsDialog } from "./InvoiceDetailsDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,6 +80,21 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
     invoice: null,
   });
 
+  // Duplicate invoice dialog state
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [existingInvoice, setExistingInvoice] = useState<any>(null);
+  const [attemptedInvoiceNumber, setAttemptedInvoiceNumber] = useState("");
+
+  const handleViewExistingInvoice = (invoiceId: string) => {
+    // Find the invoice in the current list and open its details
+    const invoice = initialInvoices.find(inv => inv.id === invoiceId);
+    if (invoice) {
+      const convertedInvoice = convertToInvoice(invoice);
+      handleOpenDialog("details", convertedInvoice);
+    }
+    setDuplicateDialogOpen(false);
+  };
+
   const handleStatusChange = async (invoiceId: string, newStatus: InvoiceStatus) => {
     try {
       const { error } = await (supabase as any)
@@ -113,6 +129,32 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
     if (!dialogState.invoice) return;
 
     try {
+      // Check for duplicate invoice number if it's being changed
+      if (updates.invoice_number && updates.invoice_number !== dialogState.invoice.invoice_number) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: existingInvoiceData, error: checkError } = await (supabase as any)
+            .from('invoices')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('invoice_number', updates.invoice_number)
+            .neq('id', dialogState.invoice.id) // Exclude current invoice
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
+            throw checkError;
+          }
+
+          if (existingInvoiceData) {
+            // Show duplicate dialog instead of throwing error
+            setExistingInvoice(existingInvoiceData);
+            setAttemptedInvoiceNumber(updates.invoice_number);
+            setDuplicateDialogOpen(true);
+            return;
+          }
+        }
+      }
+
       const { error } = await (supabase as any)
         .from('invoices')
         .update(updates)
@@ -124,14 +166,25 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
         title: "Invoice updated",
         description: "Changes saved successfully",
       });
-      
+
       handleCloseDialog();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      // Handle specific database constraint violations
+      if (error.message.includes('unique_user_invoice_number') ||
+          error.message.includes('duplicate key value') ||
+          error.message.includes('violates unique constraint')) {
+        toast({
+          title: "❌ Duplicate Invoice Number",
+          description: "An invoice with this number already exists in your account.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -278,6 +331,14 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
           onSave={handleSaveInvoice}
         />
       )}
+
+      <DuplicateInvoiceDialog
+        open={duplicateDialogOpen}
+        onOpenChange={setDuplicateDialogOpen}
+        existingInvoice={existingInvoice}
+        attemptedInvoiceNumber={attemptedInvoiceNumber}
+        onViewExisting={handleViewExistingInvoice}
+      />
     </>
   );
 };
