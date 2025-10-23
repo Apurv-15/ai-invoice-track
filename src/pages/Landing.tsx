@@ -84,7 +84,7 @@ export default function Landing() {
             </div>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex justify-center">
               <Button 
                 size="lg" 
                 onClick={handleGetStarted}
@@ -92,13 +92,6 @@ export default function Landing() {
               >
                 Get Started
                 <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
-              <Button 
-                size="lg" 
-                variant="outline"
-                className="text-lg px-8 py-6 glass hover:bg-primary/10"
-              >
-                Watch Demo
               </Button>
             </div>
 
