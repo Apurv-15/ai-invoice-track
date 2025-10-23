@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Eye, Send } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { EmailDialog } from "./EmailDialog";
 import { InvoiceDetailsDialog } from "./InvoiceDetailsDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +42,7 @@ interface InvoiceTableProps {
 }
 
 interface DialogState {
-  type: "email" | "details" | null;
+  type: "details" | null;
   invoice: Invoice | null;
 }
 
@@ -102,7 +101,7 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
     }
   };
 
-  const handleOpenDialog = (type: "email" | "details", invoice: Invoice) => {
+  const handleOpenDialog = (type: "details", invoice: Invoice) => {
     setDialogState({ type, invoice });
   };
 
@@ -261,17 +260,6 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
                         <Eye className="w-4 h-4 mr-1" />
                         View
                       </Button>
-                      {invoice.status !== "paid" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenDialog("email", invoice)}
-                          className="rounded-full hover:bg-accent/10 hover:text-accent smooth-transition"
-                        >
-                          <Send className="w-4 h-4 mr-1" />
-                          Remind
-                        </Button>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -281,14 +269,6 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
         </table>
       </div>
     </div>
-
-      {dialogState.invoice && dialogState.type === "email" && (
-        <EmailDialog
-          open={true}
-          onOpenChange={handleCloseDialog}
-          invoice={dialogState.invoice}
-        />
-      )}
 
       {dialogState.invoice && dialogState.type === "details" && (
         <InvoiceDetailsDialog
