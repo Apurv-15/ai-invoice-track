@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, db } from "@/integrations/firebase/config";
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider 
+} from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,17 +30,19 @@ export default function Auth() {
 
   useEffect(() => {
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        checkRoleAndRedirect(session.user.id);
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        checkRoleAndRedirect(user.uid);
       }
     });
+    
+    return () => unsubscribe();
   }, []);
 
   const checkRoleAndRedirect = async (userId: string) => {
-    const { data: roleData } = await (supabase as any).rpc('get_user_role', { _user_id: userId });
+    const roleDoc = await getDoc(doc(db, 'user_roles', userId));
     
-    if (roleData === 'admin') {
+    if (roleDoc.exists() && roleDoc.data()?.role === 'admin') {
       navigate('/admin');
     } else {
       navigate('/dashboard');
@@ -45,28 +54,30 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-          data: {
-            full_name: fullName,
-          },
-        },
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Create user profile
+      await setDoc(doc(db, 'profiles', user.uid), {
+        id: user.uid,
+        email: user.email,
+        full_name: fullName,
+        created_at: new Date(),
+        updated_at: new Date(),
       });
 
-      if (error) throw error;
+      // Assign default user role
+      await setDoc(doc(db, 'user_roles', user.uid), {
+        role: 'user',
+        created_at: new Date(),
+      });
 
-      if (data.user) {
-        toast({
-          title: "Account created!",
-          description: "You're now logged in.",
-        });
-        
-        // Since auto-confirm is enabled, user should be logged in
-        checkRoleAndRedirect(data.user.id);
-      }
+      toast({
+        title: "Account created!",
+        description: "You're now logged in.",
+      });
+      
+      checkRoleAndRedirect(user.uid);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -83,21 +94,14 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      toast({
+        title: "Welcome back!",
+        description: "You've been logged in successfully.",
       });
-
-      if (error) throw error;
-
-      if (data.user) {
-        toast({
-          title: "Welcome back!",
-          description: "You've been logged in successfully.",
-        });
-        
-        checkRoleAndRedirect(data.user.id);
-      }
+      
+      checkRoleAndRedirect(userCredential.user.uid);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -111,14 +115,28 @@ export default function Auth() {
 
   const handleGoogleSignIn = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
 
-      if (error) throw error;
+      // Check if profile exists, create if not
+      const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
+      if (!profileDoc.exists()) {
+        await setDoc(doc(db, 'profiles', user.uid), {
+          id: user.uid,
+          email: user.email,
+          full_name: user.displayName || user.email?.split('@')[0],
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+
+        await setDoc(doc(db, 'user_roles', user.uid), {
+          role: 'user',
+          created_at: new Date(),
+        });
+      }
+
+      checkRoleAndRedirect(user.uid);
     } catch (error: any) {
       toast({
         title: "Error",
