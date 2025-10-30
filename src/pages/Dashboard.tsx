@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, db } from "@/integrations/firebase/config";
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Header } from "@/components/Header";
 import { StatsCard } from "@/components/StatsCard";
@@ -29,66 +30,56 @@ const Dashboard = () => {
   const [userName, setUserName] = useState("User");
 
   useEffect(() => {
-    fetchUserProfile();
-    fetchInvoices();
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        await fetchUserProfile(user.uid);
+        setupInvoicesListener(user.uid);
+      } else {
+        setLoading(false);
+      }
+    });
 
-    // Setup realtime subscription
-    const channel = supabase
-      .channel('invoices-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'invoices'
-        },
-        () => {
-          fetchInvoices();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => unsubscribe();
   }, []);
 
-  const fetchUserProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await (supabase as any)
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-      
-      if (profile?.full_name) {
-        setUserName(profile.full_name.split(' ')[0]);
-      }
-    }
-  };
+  const setupInvoicesListener = (userId: string) => {
+    const q = query(
+      collection(db, 'invoices'),
+      where('user_id', '==', userId),
+      orderBy('created_at', 'desc')
+    );
 
-  const fetchInvoices = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await (supabase as any)
-        .from('invoices')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setInvoices(data || []);
-    } catch (error: any) {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const invoicesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date: doc.data().date?.toDate?.()?.toISOString() || doc.data().date
+      })) as Invoice[];
+      setInvoices(invoicesData);
+      setLoading(false);
+    }, (error) => {
       toast({
         title: "Error loading invoices",
         description: error.message,
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
+    });
+
+    return unsubscribe;
+  };
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const profileDoc = await getDoc(doc(db, 'profiles', userId));
+      if (profileDoc.exists()) {
+        const profile = profileDoc.data();
+        if (profile?.full_name) {
+          setUserName(profile.full_name.split(' ')[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
     }
   };
   
