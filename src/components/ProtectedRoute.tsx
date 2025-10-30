@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { auth, db } from "@/integrations/firebase/config";
-import { User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 import Loader from "./Loader";
 
 interface ProtectedRouteProps {
@@ -16,23 +15,38 @@ export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRout
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      setUser(firebaseUser);
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       
-      if (firebaseUser && requireAdmin) {
-        await checkAdminRole(firebaseUser.uid);
+      if (session?.user && requireAdmin) {
+        checkAdminRole(session.user.id);
       } else {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      
+      if (session?.user && requireAdmin) {
+        checkAdminRole(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [requireAdmin]);
 
   const checkAdminRole = async (userId: string) => {
     try {
-      const roleDoc = await getDoc(doc(db, 'user_roles', userId));
-      setIsAdmin(roleDoc.exists() && roleDoc.data()?.role === 'admin');
+      const { data } = await (supabase as any).rpc('has_role', { 
+        _user_id: userId, 
+        _role: 'admin' 
+      });
+      setIsAdmin(data || false);
     } catch (error) {
       console.error('Error checking admin role:', error);
       setIsAdmin(false);

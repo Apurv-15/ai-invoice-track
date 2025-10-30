@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth } from "@/integrations/firebase/config";
-import { signOut } from "firebase/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogOut, Bell } from "lucide-react";
@@ -19,7 +18,7 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("pending");
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
     toast({
       title: "Logged out",
       description: "You've been logged out successfully.",

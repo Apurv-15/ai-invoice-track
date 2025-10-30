@@ -3,9 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db, storage } from "@/integrations/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { supabase } from "@/integrations/supabase/client";
 import * as pdfjsLib from 'pdfjs-dist';
 import { DuplicateInvoiceDialog } from "./DuplicateInvoiceDialog";
 
@@ -68,6 +66,8 @@ export const UploadSection = () => {
     setUploadProgress(0);
     setDetectionLogs([]);
 
+    let extractedData: any = null; // Declare outside try block for access in catch
+
     try {
       // Validate file
       if (!file.type.match(/image\/(png|jpe?g)|application\/pdf/)) {
@@ -78,64 +78,180 @@ export const UploadSection = () => {
         throw new Error("File size must be less than 10MB");
       }
 
-      const user = auth.currentUser;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      setDetectionLogs(prev => [...prev, "Uploading file to storage..."]);
-      setUploadProgress(30);
+      setDetectionLogs(prev => [...prev, "Preparing image for AI extraction..."]);
+      setUploadProgress(10);
 
-      // Upload file to Firebase Storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `invoice-documents/${user.uid}/${Date.now()}.${fileExt}`;
-      const storageRef = ref(storage, fileName);
-      
-      await uploadBytes(storageRef, file);
-      const fileUrl = await getDownloadURL(storageRef);
+      // Convert to base64
+      let imageBase64: string;
+      if (file.type === 'application/pdf') {
+        setDetectionLogs(prev => [...prev, "Converting PDF to image..."]);
+        imageBase64 = await convertPdfToImage(file);
+      } else {
+        imageBase64 = await fileToBase64(file);
+      }
+
+      setUploadProgress(30);
+      setDetectionLogs(prev => [...prev, "Extracting invoice data with AI vision..."]);
+
+      // Call AI extraction edge function
+      const { data: extractedDataResult, error: extractError } = await supabase.functions.invoke('extract-invoice-data', {
+        body: { imageBase64 }
+      });
+
+      if (extractError) throw new Error(extractError.message || "Failed to extract invoice data");
+      if (!extractedDataResult || extractedDataResult.error) {
+        throw new Error(extractedDataResult?.error || "Failed to extract invoice data");
+      }
+
+      extractedData = extractedDataResult; // Store for use in catch block
 
       setUploadProgress(60);
-      setDetectionLogs(prev => [...prev, "✓ File uploaded successfully"]);
-      
-      // Note: AI extraction features require Firebase Functions implementation
-      // For now, we'll create a basic invoice entry that requires manual editing
-      setDetectionLogs(prev => [...prev, "Creating invoice entry (manual editing required)..."]);
+      setDetectionLogs(prev => [...prev, `✓ Vendor: ${extractedData.vendor}`]);
+      setDetectionLogs(prev => [...prev, `✓ Amount: ₹${extractedData.amount}`]);
+      setDetectionLogs(prev => [...prev, `✓ Category: ${extractedData.category} (${Math.round(extractedData.confidence * 100)}% confident)`]);
 
-      const invoiceNumber = `INV-${Date.now()}`;
-      const invoiceData = {
-        user_id: user.uid,
-        invoice_number: invoiceNumber,
-        vendor: "Unknown Vendor",
-        date: new Date(),
-        amount: 0,
-        description: "Please edit this invoice with correct details",
-        file_url: fileUrl,
-        status: 'pending',
-        created_at: new Date(),
-        updated_at: new Date(),
-      };
+      setUploadProgress(70);
+      setDetectionLogs(prev => [...prev, "Uploading file to storage..."]);
 
-      await addDoc(collection(db, 'invoices'), invoiceData);
+      // Upload file to Supabase storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('invoice-documents')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      setUploadProgress(85);
+      setDetectionLogs(prev => [...prev, "Checking for duplicate invoice numbers..."]);
+
+      // Check for duplicate invoice number for this user
+      console.log("🔍 Checking for duplicate invoice:", extractedData.invoice_number);
+      const { data: existingInvoiceData, error: checkError } = await (supabase as any)
+        .from('invoices')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('invoice_number', extractedData.invoice_number)
+        .single();
+
+      console.log("📊 Duplicate check result:", { existingInvoiceData, checkError });
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
+        throw checkError;
+      }
+
+      if (existingInvoiceData) {
+        console.log("🚨 Duplicate invoice found:", existingInvoiceData);
+        // Show duplicate dialog instead of throwing error
+        setExistingInvoice(existingInvoiceData);
+        setAttemptedInvoiceNumber(extractedData.invoice_number);
+        setDuplicateDialogOpen(true);
+        setIsUploading(false);
+        setDetectionLogs([]);
+        return;
+      }
+
+      console.log("✅ No duplicate found, proceeding with save...");
+      setDetectionLogs(prev => [...prev, "✅ No duplicate invoice found - proceeding with save..."]);
+      setDetectionLogs(prev => [...prev, "Saving invoice to database..."]);
+
+      // Find category ID
+      const { data: categories } = await (supabase as any)
+        .from('invoice_categories')
+        .select('id')
+        .eq('name', extractedData.category)
+        .single();
+
+      // Insert invoice into database with all extracted data
+      const { error: insertError } = await (supabase as any)
+        .from('invoices')
+        .insert({
+          user_id: user.id,
+          invoice_number: extractedData.invoice_number,
+          vendor: extractedData.vendor,
+          date: extractedData.date,
+          amount: extractedData.amount,
+          description: extractedData.description || '',
+          file_url: uploadData.path,
+          status: 'pending',
+          category_id: categories?.id || null,
+          category_confidence: extractedData.confidence
+        });
+
+      if (insertError) throw insertError;
 
       setUploadProgress(100);
       setDetectionLogs(prev => [...prev, "✅ Invoice uploaded successfully!"]);
-      setDetectionLogs(prev => [...prev, "⚠️ AI extraction unavailable - please edit invoice details"]);
 
       toast({
-        title: "✅ Invoice Uploaded!",
-        description: "Please edit the invoice to add vendor and amount details.",
+        title: "✅ Invoice Uploaded Successfully!",
+        description: `${extractedData.invoice_number} from ${extractedData.vendor} - ₹${extractedData.amount.toLocaleString()}`,
       });
 
       setTimeout(() => {
         setIsUploading(false);
         setDetectionLogs([]);
-      }, 2000);
+      }, 1500);
 
     } catch (error) {
       console.error('Upload Error:', error);
-      toast({
-        title: "❌ Upload Failed",
-        description: error instanceof Error ? error.message : "Failed to process invoice",
-        variant: "destructive",
-      });
+
+      // Handle specific database constraint violations
+      if (error instanceof Error) {
+        console.log("❌ Error message:", error.message);
+        if (error.message.includes('unique_user_invoice_number') ||
+            error.message.includes('duplicate key value') ||
+            error.message.includes('violates unique constraint') ||
+            error.message.includes('already exists')) {
+          console.log("🚨 Database constraint violation detected");
+          // If constraint violation, try to find the existing invoice and show dialog
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && extractedData) {
+              const { data: existingInvoiceData } = await (supabase as any)
+                .from('invoices')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('invoice_number', extractedData.invoice_number)
+                .single();
+
+              if (existingInvoiceData) {
+                console.log("📋 Found existing invoice for dialog:", existingInvoiceData);
+                setExistingInvoice(existingInvoiceData);
+                setAttemptedInvoiceNumber(extractedData.invoice_number);
+                setDuplicateDialogOpen(true);
+                setIsUploading(false);
+                setDetectionLogs([]);
+                return;
+              }
+            }
+          } catch (findError) {
+            console.error("Error finding existing invoice:", findError);
+          }
+
+          toast({
+            title: "❌ Duplicate Invoice",
+            description: "An invoice with this number already exists in your account. Please check your uploaded invoices.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "❌ Upload Failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "❌ Upload Failed",
+          description: "Failed to process invoice",
+          variant: "destructive",
+        });
+      }
+
       setIsUploading(false);
       setDetectionLogs([]);
     }

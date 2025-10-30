@@ -1,9 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { db, auth } from "@/integrations/firebase/config";
-import { doc, updateDoc, getDoc, query, collection, where, getDocs } from "firebase/firestore";
 import {
   Select,
   SelectContent,
@@ -14,6 +12,7 @@ import {
 import { DuplicateInvoiceDialog } from "./DuplicateInvoiceDialog";
 import { cn } from "@/lib/utils";
 import { InvoiceDetailsDialog } from "./InvoiceDetailsDialog";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 export type InvoiceStatus = "paid" | "pending" | "unpaid" | "approved" | "rejected";
@@ -98,10 +97,12 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
 
   const handleStatusChange = async (invoiceId: string, newStatus: InvoiceStatus) => {
     try {
-      await updateDoc(doc(db, 'invoices', invoiceId), {
-        status: newStatus,
-        updated_at: new Date()
-      });
+      const { error } = await (supabase as any)
+        .from('invoices')
+        .update({ status: newStatus })
+        .eq('id', invoiceId);
+
+      if (error) throw error;
 
       toast({
         title: "Status updated",
@@ -130,20 +131,23 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
     try {
       // Check for duplicate invoice number if it's being changed
       if (updates.invoice_number && updates.invoice_number !== dialogState.invoice.invoice_number) {
-        const user = auth.currentUser;
+        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const q = query(
-            collection(db, 'invoices'),
-            where('user_id', '==', user.uid),
-            where('invoice_number', '==', updates.invoice_number)
-          );
-          const querySnapshot = await getDocs(q);
-          
-          // Check if any document exists that's not the current invoice
-          const existingInvoice = querySnapshot.docs.find(doc => doc.id !== dialogState.invoice.id);
-          
-          if (existingInvoice) {
-            setExistingInvoice({ id: existingInvoice.id, ...existingInvoice.data() });
+          const { data: existingInvoiceData, error: checkError } = await (supabase as any)
+            .from('invoices')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('invoice_number', updates.invoice_number)
+            .neq('id', dialogState.invoice.id) // Exclude current invoice
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
+            throw checkError;
+          }
+
+          if (existingInvoiceData) {
+            // Show duplicate dialog instead of throwing error
+            setExistingInvoice(existingInvoiceData);
             setAttemptedInvoiceNumber(updates.invoice_number);
             setDuplicateDialogOpen(true);
             return;
@@ -151,10 +155,12 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
         }
       }
 
-      await updateDoc(doc(db, 'invoices', dialogState.invoice.id), {
-        ...updates,
-        updated_at: new Date()
-      });
+      const { error } = await (supabase as any)
+        .from('invoices')
+        .update(updates)
+        .eq('id', dialogState.invoice.id);
+
+      if (error) throw error;
 
       toast({
         title: "Invoice updated",
@@ -163,11 +169,22 @@ export const InvoiceTable = ({ invoices: initialInvoices, isAdmin = true }: Invo
 
       handleCloseDialog();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      // Handle specific database constraint violations
+      if (error.message.includes('unique_user_invoice_number') ||
+          error.message.includes('duplicate key value') ||
+          error.message.includes('violates unique constraint')) {
+        toast({
+          title: "❌ Duplicate Invoice Number",
+          description: "An invoice with this number already exists in your account.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     }
   };
 

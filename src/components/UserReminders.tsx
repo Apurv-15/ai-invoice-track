@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { auth, db } from "@/integrations/firebase/config";
-import { collection, query, where, orderBy, onSnapshot, addDoc, getDocs } from "firebase/firestore";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,63 +58,74 @@ export const UserReminders = () => {
   const [category, setCategory] = useState<'general' | 'invoice' | 'payment' | 'technical' | 'urgent'>('general');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchReminders = useCallback(async () => {
     try {
-      const user = auth.currentUser;
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const q = query(
-        collection(db, 'invoices'),
-        where('user_id', '==', user.uid),
-        orderBy('created_at', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const invoicesData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Invoice[];
-      
-      setInvoices(invoicesData);
+      const { data, error } = await (supabase as any)
+        .from('reminders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setReminders(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, vendor, amount')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setInvoices(data || []);
     } catch (error: any) {
       console.error('Error fetching invoices:', error);
     }
   }, []);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
+    fetchReminders();
     fetchInvoices();
 
-    // Set up real-time listener for reminders
-    const q = query(
-      collection(db, 'reminders'),
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    );
+    // Set up real-time subscription for user's reminders
+    const subscription = (supabase as any)
+      .channel('user_reminders')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reminders',
+        },
+        (payload) => {
+          // Refresh on any change; RLS ensures only the user's reminders are fetched
+          fetchReminders();
+        }
+      )
+      .subscribe();
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const remindersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        created_at: doc.data().created_at?.toDate?.()?.toISOString() || doc.data().created_at,
-        read_at: doc.data().read_at?.toDate?.()?.toISOString() || doc.data().read_at,
-        resolved_at: doc.data().resolved_at?.toDate?.()?.toISOString() || doc.data().resolved_at,
-      })) as UserReminder[];
-      setReminders(remindersData);
-      setLoading(false);
-    }, (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [fetchInvoices, toast]);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchReminders, fetchInvoices]);
 
   const sendReminder = async () => {
     if (!title.trim() || !message.trim()) {
@@ -129,25 +139,26 @@ export const UserReminders = () => {
 
     setSending(true);
     try {
-      const user = auth.currentUser;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
       const insertData: any = {
-        user_id: user.uid,
+        user_id: user.id,
         title: title.trim(),
         message: message.trim(),
         priority,
         category,
-        status: 'pending',
-        created_at: new Date(),
-        updated_at: new Date(),
       };
 
       if (selectedInvoiceId) {
         insertData.invoice_id = selectedInvoiceId;
       }
 
-      await addDoc(collection(db, 'reminders'), insertData);
+      const { error } = await supabase
+        .from('reminders')
+        .insert(insertData);
+
+      if (error) throw error;
 
       toast({
         title: "Reminder Sent!",
@@ -161,6 +172,8 @@ export const UserReminders = () => {
       setCategory('general');
       setSelectedInvoiceId("");
       setDialogOpen(false);
+
+      fetchReminders();
     } catch (error: any) {
       toast({
         title: "Error",
