@@ -278,7 +278,7 @@ export const UserReminders = () => {
                     <SelectContent>
                       {invoices.map((invoice) => (
                         <SelectItem key={invoice.id} value={invoice.id}>
-                          {invoice.invoice_number} - {invoice.vendor} (${invoice.amount})
+                          {invoice.invoice_number} - {invoice.vendor} (Rs {invoice.amount})
                         </SelectItem>
                       ))}
                     </SelectContent>

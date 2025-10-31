@@ -270,7 +270,7 @@ export const AdminReminders = () => {
                         </p>
                         {reminder.invoices && (
                           <p className="text-sm font-medium text-primary">
-                            Invoice: {reminder.invoices.invoice_number} - {reminder.invoices.vendor} (${reminder.invoices.amount})
+                            Invoice: {reminder.invoices.invoice_number} - {reminder.invoices.vendor} (Rs {reminder.invoices.amount})
                           </p>
                         )}
                       </div>

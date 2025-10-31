@@ -138,7 +138,7 @@ const Dashboard = () => {
           />
           <StatsCard
             title="Amount Due"
-            value={`₹${amountDue.toLocaleString()}`}
+            value={`Rs ${amountDue.toLocaleString()}`}
             icon={IndianRupee}
             variant="default"
           />
